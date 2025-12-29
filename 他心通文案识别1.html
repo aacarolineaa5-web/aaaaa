@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- 关键：禁止缩放，模拟APP视口 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- 关键：iOS APP 模式配置 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
+    
+    <title>TA心通报告生成器</title>
+    
+    <!-- 引入字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;500;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
+    <!-- 引入 html2canvas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <style>
+        /* --- 核心变量 --- */
+        :root {
+            --bg-color: #fdfbf7; 
+            --text-primary: #2c2a29; 
+            --text-secondary: #5e5e5e;
+            --accent-red: #8a1c1c; 
+            --accent-dark-red: #5c0a0a; 
+            --accent-gold: #c5a059; 
+            --accent-bright-gold: #d4af37; 
+            --accent-purple: #4a2c5a; 
+            --font-serif: 'Noto Serif SC', serif;
+            --font-display: 'Playfair Display', serif;
+            --font-art: 'ZCOOL XiaoWei', serif;
+            --app-bg: #f2f2f7; 
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        /* APP 全屏适配 */
+        body { 
+            margin: 0; padding: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background: var(--app-bg); 
+            color: #333;
+            overscroll-behavior-y: none; /* 禁止橡皮筋效果 */
+        }
+
+        /* ================= 1. 编辑器界面 ================= */
+        #editor-ui {
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            padding-bottom: 120px; /* 底部留白 */
+            display: block;
+            padding-top: 40px; /* 避开刘海屏 */
+        }
+
+        .editor-header { text-align: center; margin-bottom: 30px; padding-top: 10px; }
+        .editor-header h1 { font-size: 1.4rem; color: var(--accent-purple); margin: 0 0 5px 0; }
+        .editor-header p { font-size: 0.85rem; color: #666; margin: 0; }
+
+        /* 导入/导出面板样式 */
+        #import-panel {
+            display: none;
+            background: #fff;
+            border: 2px dashed var(--accent-gold);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+        #import-panel textarea {
+            width: 100%;
+            height: 200px;
+            font-family: monospace;
+            font-size: 16px; 
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            white-space: pre-wrap; 
+        }
+        .import-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .btn-small {
+            padding: 8px 18px;
+            font-size: 14px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .btn-copy { background: #eee; color: #333; }
+        .btn-run { background: var(--accent-purple); color: #fff; }
+
+        .btn-toggle-import {
+            background: transparent;
+            border: 1px solid var(--accent-purple);
+            color: var(--accent-purple);
+            padding: 8px 20px;
+            border-radius: 20px;
+            margin-top: 10px;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+
+        .form-section {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .form-header {
+            background: #fff;
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            font-weight: bold;
+            color: var(--accent-red);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.1rem;
+        }
+        .form-header span { font-size: 0.8rem; color: #999; font-weight: normal; }
+
+        .form-body { padding: 20px; }
+
+        .input-group { margin-bottom: 20px; }
+        .input-group:last-child { margin-bottom: 0; }
+        
+        .label { display: block; font-size: 1rem; color: #444; margin-bottom: 8px; font-weight: 500; }
+        
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 12px 14px; 
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px; 
+            line-height: 1.6;
+            background: #fafafa;
+            font-family: inherit;
+        }
+        input[type="text"]:focus, textarea:focus {
+            background: #fff;
+            border-color: var(--accent-gold);
+            outline: none;
+        }
+        textarea { min-height: 100px; resize: vertical; }
+
+        /* 底部固定按钮栏 */
+        .bottom-bar {
+            position: fixed; bottom: 0; left: 0; width: 100%;
+            background: rgba(255,255,255,0.95);
+            padding: 15px 20px;
+            /* 适配 iPhone X 底部横条 */
+            padding-bottom: env(safe-area-inset-bottom, 20px); 
+            box-shadow: 0 -4px 12px rgba(0,0,0,0.08);
+            display: flex; gap: 15px; z-index: 9000; 
+            backdrop-filter: blur(10px);
+        }
+
+        .btn {
+            flex: 1; border: none; border-radius: 50px;
+            height: 48px; font-size: 17px; font-weight: bold;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: opacity 0.2s;
+        }
+        .btn:active { opacity: 0.8; }
+        .btn-reset { background: #f0f0f0; color: #333; flex: 0 0 90px; }
+        .btn-preview { background: var(--accent-purple); color: #fff; }
+        .btn-back { background: #333; color: #fff; flex: 0 0 110px; }
+        .btn-download { background: var(--accent-red); color: #fff; }
+
+        /* 加载遮罩 */
+        #loading-mask {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #fff; z-index: 10000;
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .loader {
+            width: 40px; height: 40px; border: 4px solid #eee;
+            border-top-color: var(--accent-gold); border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 15px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* 自定义模态框 */
+        #custom-modal {
+            display: none; 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.5); z-index: 20000; 
+            align-items: center; justify-content: center;
+        }
+        .modal-content {
+            background: #fff; padding: 25px; border-radius: 12px; 
+            width: 85%; max-width: 320px; text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .modal-msg { margin-bottom: 20px; font-size: 16px; line-height: 1.6; color: #333; }
+        .modal-btns { display: flex; gap: 10px; justify-content: center; }
+        .modal-btn { 
+            padding: 10px 24px; border-radius: 24px; border: none; font-weight: bold; cursor: pointer; flex: 1; font-size: 15px;
+        }
+        .modal-cancel { background: #eee; color: #555; }
+        .modal-ok { background: var(--accent-purple); color: #fff; }
+
+
+        /* ================= 2. 预览界面样式 ================= */
+        #preview-ui {
+            display: none; 
+            background-color: #333; 
+            min-height: 100vh;
+            padding-bottom: 100px; 
+            overflow-x: auto; 
+        }
+
+        #report-card {
+            width: 750px; 
+            margin: 20px auto; 
+            background-color: var(--bg-color);
+            background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23c5a059' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
+            color: var(--text-primary);
+            font-size: 30px; 
+            line-height: 1.6;
+            padding: 60px 40px; 
+            padding-bottom: 80px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.15);
+            transform-origin: top left;
+        }
+
+        /* --- 报告内部样式 --- */
+        .report-content { font-family: var(--font-serif); }
+        .ornament-divider { text-align: center; color: var(--accent-gold); font-size: 2rem; margin: 50px 0 40px; opacity: 0.8; text-shadow: 0 0 5px rgba(197, 160, 89, 0.3); }
+        
+        header { text-align: center; padding: 30px 0 60px; }
+        .title-group { display: flex; flex-direction: column; align-items: center; margin-bottom: 40px; position: relative; }
+        .title-top { font-family: var(--font-art); font-size: 6rem; color: var(--text-primary); margin-bottom: -20px; letter-spacing: 4px; opacity: 0.9; position: relative; z-index: 2; text-shadow: 3px 3px 0px rgba(197, 160, 89, 0.2); }
+        .title-main { font-family: var(--font-art); font-size: 8rem; line-height: 1.2; color: #c5a059; background: linear-gradient(45deg, #a67c00, #bf9b30, #ffcf70, #a67c00); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); }
+        
+        .subtitle { font-family: var(--font-serif); color: var(--accent-gold); font-size: 1.8rem; letter-spacing: 6px; margin-bottom: 40px; text-transform: uppercase; }
+        .intro-quote { font-family: var(--font-serif); font-style: italic; color: var(--text-secondary); font-size: 1.1em; max-width: 90%; margin: 0 auto; border-top: 2px solid var(--accent-gold); border-bottom: 2px solid var(--accent-gold); padding: 40px 20px; text-align: justify; background: linear-gradient(to right, transparent, rgba(197, 160, 89, 0.05), transparent); }
+        
+        section { margin-bottom: 80px; }
+        h2 { font-family: var(--font-serif); text-align: center; color: var(--text-primary); margin-bottom: 50px; display: flex; flex-direction: column; align-items: center; }
+        .h2-top { font-size: 3.5rem; color: var(--accent-red); margin-bottom: 10px; letter-spacing: 6px; font-weight: 700; text-transform: uppercase; }
+        .h2-divider { width: 60px; height: 3px; background-color: var(--accent-gold); margin: 15px 0; position: relative; }
+        .h2-divider::after { content: "✦"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -52%); background: #fff; padding: 0 10px; color: var(--accent-gold); font-size: 18px; }
+        .h2-bottom { font-size: 2rem; color: var(--accent-gold); letter-spacing: 4px; font-weight: 500; }
+
+        .card-grid { display: grid; gap: 30px; }
+        .card { background: #fff; border: 2px solid rgba(197, 160, 89, 0.25); padding: 30px; box-shadow: 0 6px 15px rgba(0,0,0,0.04); border-radius: 4px; }
+        .card h3 { font-size: 1.6em; margin-top: 0; margin-bottom: 15px; color: var(--accent-red); border-bottom: 1px dotted var(--accent-gold); padding-bottom: 10px; }
+        
+        .wealth-list { margin-top: 30px; }
+        .wealth-item { margin-bottom: 20px; padding: 30px; background: #fffaf0; border: 2px solid rgba(197, 160, 89, 0.15); border-radius: 4px; }
+        .badge { display: inline-block; background: var(--text-primary); color: #c5a059; padding: 6px 18px; font-size: 0.9em; letter-spacing: 2px; margin-bottom: 15px; border: 1px solid var(--accent-gold); font-weight: 700; box-shadow: 3px 3px 0px rgba(197, 160, 89, 0.3); }
+
+        .destiny-card { margin-top: 60px; position: relative; background: #fdfbff; border: 2px solid rgba(74, 44, 90, 0.2); padding: 8px; box-shadow: 0 15px 40px rgba(74, 44, 90, 0.15); }
+        .destiny-inner { border: 2px solid var(--accent-purple); padding: 40px 30px; position: relative; background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0L32 28L60 30L32 32L30 60L28 32L0 30L28 28L30 0Z' fill='%234a2c5a' fill-opacity='0.03'/%3E%3C/svg%3E"); }
+        .destiny-badge { position: absolute; top: -24px; left: 50%; transform: translateX(-50%); background: linear-gradient(45deg, #fff8db, #ffd700, #ffecb3, #ffd700, #fff8db); background-size: 200% auto; color: var(--text-primary); padding: 10px 40px; font-size: 1.1em; letter-spacing: 3px; font-weight: bold; border: 2px solid #fff; z-index: 10; white-space: nowrap; box-shadow: 0 4px 8px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; }
+        .destiny-title { color: var(--accent-purple); font-family: var(--font-display); font-size: 1.8em; font-weight: 700; text-align: center; margin-bottom: 30px; display: flex; align-items: center; justify-content: center; gap: 15px; text-shadow: 0 0 15px rgba(197, 160, 89, 0.2); }
+        .destiny-symbol { font-size: 1.5em; color: #d4af37; } 
+        .trigger-label { margin-top: 25px; color: var(--accent-purple); font-weight: bold; display: flex; align-items: center; gap: 8px; letter-spacing: 1px; font-size: 1.1em; }
+
+        .charm-text { color: #d4af37 !important; font-weight: bold; font-size: 1em; text-align: center; margin: 40px 0; border: 2px dashed #d4af37; padding: 20px; background: #fffcf5; border-radius: 6px; text-shadow: 0px 0px 1px rgba(0,0,0,0.05); }
+
+        .comm-card { background: #fffcf5; border: 2px solid rgba(197, 160, 89, 0.4); padding: 30px; margin-top: 30px; border-radius: 6px; box-shadow: 0 6px 15px rgba(197, 160, 89, 0.05); }
+        .comm-title-row { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 20px; border-bottom: 1px solid rgba(197, 160, 89, 0.3); padding-bottom: 15px; }
+        .comm-title { font-family: var(--font-serif); font-size: 1.4em; font-weight: 700; letter-spacing: 2px; color: var(--text-primary); }
+        .comm-label { font-weight: 700; color: var(--accent-gold); margin-bottom: 10px; display: block; font-size: 1.2em; border-bottom: 1px dashed rgba(197, 160, 89, 0.3); padding-bottom: 5px; }
+        
+        .comm-box { background: #fff; border: 2px solid rgba(197, 160, 89, 0.3); border-radius: 8px; padding: 25px; margin-bottom: 25px; box-shadow: 0 4px 10px rgba(197, 160, 89, 0.08); }
+        .comm-box:last-child { margin-bottom: 0; }
+        
+        /* 美化内容框 (理想画像、恋爱偏好) */
+        .content-box { 
+            background: #fffcf8; 
+            border: 3px double var(--accent-gold); 
+            border-radius: 8px; 
+            padding: 30px; 
+            margin-top: 15px; 
+            margin-bottom: 40px; 
+            box-shadow: 0 6px 15px rgba(197, 160, 89, 0.1); 
+            position: relative;
+        }
+        .content-box::before { content: "❝"; position: absolute; top: -15px; left: 20px; background: #fffcf8; padding: 0 10px; color: var(--accent-gold); font-size: 36px; font-family: serif; line-height: 1; }
+
+        .house-box {
+            background: #fff; 
+            border-radius: 8px; 
+            padding: 25px; 
+            margin-bottom: 25px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            position: relative;
+            overflow: hidden;
+        }
+        .house-box-title {
+            font-family: var(--font-display);
+            font-size: 1.3em;
+            font-weight: 700;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #ddd;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .house-love { border: 2px solid rgba(230, 100, 100, 0.2); }
+        .house-love .house-box-title { color: #d46a6a; border-color: rgba(230, 100, 100, 0.3); }
+        
+        .house-marriage { border: 2px solid rgba(74, 44, 90, 0.2); }
+        .house-marriage .house-box-title { color: var(--accent-purple); border-color: rgba(74, 44, 90, 0.3); }
+
+        .timeline { border-left: 2px solid var(--accent-gold); margin-left: 15px; padding-left: 35px; }
+        .timeline-item { margin-bottom: 50px; position: relative; }
+        .timeline-item::before { content: "✦"; position: absolute; left: -43px; top: 0; width: 16px; color: var(--accent-red); background: #fff; text-align: center; font-size: 1.5em; padding: 2px; }
+        .time-label, .time-date { font-family: var(--font-display); font-weight: bold; color: var(--accent-gold); font-size: 1.3em; margin-bottom: 10px; display: block; letter-spacing: 1px; }
+
+        .monthly-grid { display: grid; gap: 20px; }
+        .month-item { border: 2px solid rgba(197, 160, 89, 0.2); padding: 25px; background: #fff; border-radius: 4px; }
+        .month-date { font-family: var(--font-display); color: var(--accent-red); font-weight: bold; display: block; margin-bottom: 15px; border-bottom: 1px solid var(--accent-gold); padding-bottom: 8px; font-size: 1.2em; }
+
+        .highlight { color: var(--accent-red); font-weight: bold; border-bottom: 2px solid rgba(138, 28, 28, 0.1); }
+    </style>
+</head>
+<body>
+
+    <!-- 自定义弹窗 -->
+    <div id="custom-modal">
+        <div class="modal-content">
+            <p id="modal-msg" class="modal-msg"></p>
+            <div class="modal-btns">
+                <button id="modal-cancel" class="modal-btn modal-cancel">取消</button>
+                <button id="modal-ok" class="modal-btn modal-ok">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载遮罩 -->
+    <div id="loading-mask">
+        <div class="loader"></div>
+        <div style="font-weight: bold; color: #666; font-size: 16px;">正在生成高清长图...</div>
+        <div style="font-size: 12px; color: #999; margin-top: 10px;">请勿关闭页面</div>
+    </div>
+
+    <!-- 1. 编辑器 -->
+    <div id="editor-ui">
+        <div class="editor-header">
+            <h1>TA心通文案生成器</h1>
+            <p>手机/电脑通用 · 一键生成长图</p>
+            <button class="btn-toggle-import" onclick="toggleImport()">📋 智能文本导入/导出</button>
+        </div>
+
+        <!-- 导入/导出面板 -->
+        <div id="import-panel">
+            <p style="margin:0 0 10px 0; font-size:12px; color:#666;">
+                <b>使用说明：</b> 直接粘贴你的报告文案（不需要任何格式），点击“智能识别”。系统会自动分析“相位”、“时间轴”、“流月”等板块并填充。
+            </p>
+            <textarea id="import-text" placeholder="请直接在此粘贴你写好的报告文本..."></textarea>
+            <div class="import-actions">
+                <button class="btn-small btn-run" onclick="runImport()">⚡ 智能识别并填充</button>
+            </div>
+        </div>
+
+        <!-- 输入板块容器 -->
+        <div id="form-container"></div>
+    </div>
+
+    <!-- 底部按钮 -->
+    <div class="bottom-bar" id="editor-buttons">
+        <button class="btn btn-reset" onclick="resetData()">重置</button>
+        <button class="btn btn-generate" onclick="showPreview()">生成预览</button>
+    </div>
+
+    <!-- 2. 预览与生成界面 -->
+    <div id="preview-ui">
+        <!-- 固定底部按钮 -->
+        <div class="bottom-bar">
+            <button class="btn btn-back" onclick="hidePreview()">返回修改</button>
+            <button class="btn btn-download" onclick="downloadImage()">📥 保存为长图 (JPG)</button>
+        </div>
+
+        <!-- 真正的渲染容器 (可见，强制宽度 750px) -->
+        <div id="report-card">
+            <div class="report-wrapper">
+                <header>
+                    <div class="title-group"><span class="title-top">TA心通</span><span class="title-main">灵魂密钥</span></div>
+                    <div class="subtitle">深度命理咨商 · 知凡独家定制</div>
+                    <div class="intro-quote" id="out-intro"></div>
+                </header>
+
+                <div class="ornament-divider">⚜️</div>
+
+                <!-- 相位 -->
+                <section>
+                    <h2><span class="h2-top">一把钥匙</span><div class="h2-divider"></div><span class="h2-bottom">打开心门</span></h2>
+                    <div class="card-grid" id="out-phases"></div>
+                </section>
+
+                <div class="ornament-divider">༒</div>
+
+                <!-- 财富 -->
+                <section>
+                    <h2><span class="h2-top">一张藏宝图</span><div class="h2-divider"></div><span class="h2-bottom">财富事业核心优势</span></h2>
+                    <div class="wealth-list">
+                        <div class="wealth-item"><span class="badge">财富宫 · 正财</span><p id="out-wealth1"></p></div>
+                        <div class="wealth-item"><span class="badge">偏财宫 · 偏财</span><p id="out-wealth2"></p></div>
+                        <div class="wealth-item"><span class="badge">事业宫 · 模式</span><p id="out-wealth3"></p></div>
+                    </div>
+                </section>
+
+                <div class="ornament-divider">⚜️</div>
+
+                <!-- 情感 -->
+                <section>
+                    <h2><span class="h2-top">爱神的面纱</span><div class="h2-divider"></div><span class="h2-bottom">情感模式</span></h2>
+                    <div style="text-align: center; margin-bottom: 30px;" id="out-signs"></div>
+                    
+                    <h4 style="font-family:var(--font-serif); font-weight:700; margin-top:20px;">理想画像</h4>
+                    <div class="content-box" id="out-love-ideal"></div>
+                    
+                    <h4 style="font-family:var(--font-serif); font-weight:700; margin-top:20px;">恋爱偏好</h4>
+                    <div class="content-box" id="out-love-pref"></div>
+
+                    <div class="comm-card">
+                        <div class="comm-title-row"><span class="comm-icon">🕊️</span><span class="comm-title">情绪敏感点与沟通逻辑</span><span class="comm-icon">🕊️</span></div>
+                        <!-- 美化后的独立卡片结构 -->
+                        <div class="comm-box"><span class="comm-label">✒️ 逻辑层的对话：</span><p class="comm-text" id="out-comm-logic"></p></div>
+                        <div class="comm-box"><span class="comm-label">🤍 情绪层的按钮：</span><p class="comm-text" id="out-comm-emotion"></p></div>
+                    </div>
+                    
+                    <div class="ornament-divider">⚜️</div>
+
+                    <div style="margin-top: 40px;">
+                        <h3 style="text-align:center; color:var(--accent-gold); font-family:var(--font-display); border:none; letter-spacing:2px;">✦ 感情阶段的变奏曲 ✦</h3>
+                        <h4 style="font-family:var(--font-serif); font-weight:700; margin-top:20px;">恋爱前期的表现</h4><p id="out-stage-early"></p>
+                        <h4 style="font-family:var(--font-serif); font-weight:700; margin-top:20px;">恋爱中期的表现</h4><p id="out-stage-mid"></p>
+                        <h4 style="font-family:var(--font-serif); font-weight:700; margin-top:20px;">恋爱后期的表现</h4><p id="out-stage-late"></p>
+                    </div>
+                    
+                    <div style="display: flex; gap: 30px; margin-top:30px;">
+                        <div style="flex:1; border: 2px solid rgba(138, 28, 28, 0.2); padding: 25px; background: rgba(138, 28, 28, 0.02); border-radius:2px;">
+                            <p class="highlight" style="text-align: center; border:none; color:var(--accent-red);">当他爱上一个人</p>
+                            <p style="font-size:0.95em" id="out-love-true"></p>
+                        </div>
+                        <div style="flex:1; border: 2px solid rgba(44, 42, 41, 0.2); padding: 25px; background: rgba(44, 42, 41, 0.02); border-radius:2px;">
+                            <p class="highlight" style="color:#666; text-align: center; border:none;">当他不爱一个人</p>
+                            <p style="font-size:0.95em" id="out-love-false"></p>
+                        </div>
+                    </div>
+
+                    <div class="ornament-divider">⚜️</div>
+
+                    <div style="margin-top: 40px;">
+                        <h3 style="text-align:center; color:var(--accent-gold); font-family:var(--font-display); border:none; letter-spacing:2px;">✦ 宫位的秘密 ✦</h3>
+                        
+                        <div class="house-box house-love">
+                            <div class="house-box-title">💘 恋爱宫</div>
+                            <p id="out-house-love"></p>
+                        </div>
+
+                        <div class="house-box house-marriage">
+                            <div class="house-box-title">💍 婚姻宫</div>
+                            <p id="out-house-marriage"></p>
+                        </div>
+                    </div>
+
+                    <div class="ornament-divider">⚜️</div>
+
+                    <div class="destiny-card">
+                        <div class="destiny-badge"><span>✦ 宿命的牵引 ✦</span></div>
+                        <div class="destiny-inner">
+                            <div class="destiny-title"><span class="destiny-symbol">🌹</span><span>注定对ta产生深刻影响的人</span><span class="destiny-symbol">🌹</span></div>
+                            <div class="destiny-text">
+                                <p id="out-destiny-main"></p>
+                                <div class="trigger-label"><span>✺</span><span>宿命触发机制：</span></div>
+                                <p id="out-destiny-trigger"></p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="ornament-divider">༒</div>
+
+                <!-- 欲望 -->
+                <section>
+                    <h2><span class="h2-top">秘密花园</span><div class="h2-divider"></div><span class="h2-bottom">欲望与激情</span></h2>
+                    <p><b>对生理需求的渴望程度，私密行为偏好：</b><br>打开ta的情欲开关，生理心理同步感受浪漫和渴望。</p>
+                    <div id="out-desire"></div>
+                    <p class="charm-text" id="out-charm"></p>
+                    
+                    <div class="ornament-divider">⚜️</div>
+
+                    <h3 style="text-align:center; margin-top:30px; margin-bottom:10px; font-size: 1.5em;">宿命姻缘：前世今生的红线</h3>
+                    <p style="font-weight:bold; color:var(--accent-red); text-align:center; margin-bottom:15px; font-size: 1.1em;">✦ 冥冥之中的吸引，注定与ta纠缠的高危桃花。危机预警！ ✦</p>
+                    
+                    <div style="background: linear-gradient(to bottom, #fff, rgba(197, 160, 89, 0.1)); padding: 30px; border: 2px solid var(--accent-gold); margin-top: 30px; text-align: center; border-radius:4px;">
+                        <p style="margin-bottom: 15px;font-weight:bold; color:var(--accent-red);"><b>✦ 会与他暧昧暗中往来的女性星座 ✦</b><br><span id="out-star1"></span></p>
+                        <p style="margin-bottom: 15px;font-weight:bold; color:var(--accent-red);"><b>✦ 会让他肉体欲罢不能的女性星座 ✦</b><br><span id="out-star2"></span></p>
+                        <p style="margin-bottom: 0;font-weight:bold; color:var(--accent-red);"><b>✦ 致命吸引他的女性星座 ✦</b><br><span id="out-star3"></span></p>
+                    </div>
+                </section>
+
+                <div class="ornament-divider" id="div-timeline">⚜️</div>
+
+                <!-- 时间轴 -->
+                <section id="sec-timeline">
+                    <h2><span class="h2-top">时间之轮</span><div class="h2-divider"></div><span class="h2-bottom">关键节点</span></h2>
+                    <div class="timeline" id="out-timeline"></div>
+                </section>
+
+                <div class="ornament-divider" id="div-monthly">༒</div>
+
+                <!-- 流月 -->
+                <section id="sec-monthly">
+                    <h2><span class="h2-top">月相指引</span><div class="h2-divider"></div><span class="h2-bottom">近期概况</span></h2>
+                    <div class="monthly-grid" id="out-monthly"></div>
+                </section>
+                
+                <div style="text-align: center; color: #999; font-size: 1rem; margin-top: 80px;">
+                    <p>— 全文完 —</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 配置所有字段
+        const formConfig = [
+            { section: '封面', fields: [{ id: 'intro', label: '引言', type: 'textarea', default: '解读ta的性格，了解ta的特点甚至是弱点。人們通常不會什麼都主動表達，但渴望被懂得。\n\n你對ta欲言又止的理解能瞬間擊穿他堅硬的外壳，讓ta覺得这辈子只有你最懂我。让他的心在你这儿软下来。' }] },
+            { section: '性格相位 (8+2)', fields: [
+                { id: 'p1t', label: '1. 标题', default: '月火冲' }, { id: 'p1c', label: '1. 内容', type: 'textarea', default: '当他愤怒的时候...' },
+                { id: 'p2t', label: '2. 标题', default: '水天合' }, { id: 'p2c', label: '2. 内容', type: 'textarea', default: '在传统的物质...' },
+                { id: 'p3t', label: '3. 标题', default: '水海合' }, { id: 'p3c', label: '3. 内容', type: 'textarea', default: '他具有很强的直觉力...' },
+                { id: 'p4t', label: '4. 标题', default: '金天合' }, { id: 'p4c', label: '4. 内容', type: 'textarea', default: '金天通常是具有...' },
+                { id: 'p5t', label: '5. 标题', default: '天海合' }, { id: 'p5c', label: '5. 内容', type: 'textarea', default: '这个相位是一个...' },
+                { id: 'p6t', label: '6. 标题', default: '木星拱莉莉丝' }, { id: 'p6c', label: '6. 内容', type: 'textarea', default: '他就像月球那样...' },
+                { id: 'p7t', label: '7. 标题', default: '火星冲冥王星' }, { id: 'p7c', label: '7. 内容', type: 'textarea', default: '火冥有相位的人...' },
+                { id: 'p8t', label: '8. 标题', default: '婚神星合莉莉丝' }, { id: 'p8c', label: '8. 内容', type: 'textarea', default: '他的妻子形象...' },
+                { id: 'p9t', label: '9. 备用', default: '' }, { id: 'p9c', label: '9. 内容', type: 'textarea', default: '' },
+                { id: 'p10t', label: '10. 备用', default: '' }, { id: 'p10c', label: '10. 内容', type: 'textarea', default: '' },
+            ]},
+            { section: '财富与事业', fields: [
+                { id: 'w1', label: '正财', type: 'textarea', default: '主业适合从事程序猿...' },
+                { id: 'w2', label: '偏财', type: 'textarea', default: '副业适合从事创业...' },
+                { id: 'w3', label: '事业模式', type: 'textarea', default: '适合从事打短线的经商模式...' },
+            ]},
+            { section: '情感模式', fields: [
+                { id: 'signs', label: '星座配置', default: '金星天蝎 · 月亮射手 · 婚神白羊' },
+                { id: 'ideal', label: '理想画像', type: 'textarea', default: '他渴望的恋人...' },
+                { id: 'pref', label: '恋爱偏好', type: 'textarea', default: '恋爱中是想要被崇拜...' },
+                { id: 'logic', label: '逻辑沟通', type: 'textarea', default: '他是绝对的“逻辑型”沟通者...' },
+                { id: 'emotion', label: '情绪按钮', type: 'textarea', default: '他的情绪开关在于...' },
+                { id: 's1', label: '前期表现', type: 'textarea', default: '无论他冷漠还是热情...' },
+                { id: 's2', label: '中期表现', type: 'textarea', default: '会非常自卑...' },
+                { id: 's3', label: '后期表现', type: 'textarea', default: '通常会担心女方妨碍...' },
+                { id: 'loveT', label: '爱的时候', type: 'textarea', default: '他会害羞、羞涩...' },
+                { id: 'loveF', label: '不爱的时候', type: 'textarea', default: '他会自信、笃定...' },
+                { id: 'houseL', label: '恋爱宫', type: 'textarea', default: '恋爱宫宫主月亮...' },
+                { id: 'houseM', label: '婚姻宫', type: 'textarea', default: '婚姻宫宫主水星...' },
+            ]},
+            { section: '宿命与欲望', fields: [
+                // 移除了 destiny, redthread 输入框，只保留 trigger 用于承载宿命内容
+                { id: 'trigger', label: '宿命与触发机制', type: 'textarea', default: '当妻子无意间触碰...' },
+                { id: 'desire', label: '欲望描述', type: 'textarea', default: '因为在性欲上追求...' },
+                { id: 'charm', label: '魅惑建议', type: 'textarea', default: '✨ 魅惑建议：可以在婚后...' },
+                // 移除了 redthread 输入框
+                { id: 'star1', label: '星座1', default: '日升射手、日升摩羯、日升白羊' },
+                { id: 'star2', label: '星座2', default: '日升天蝎、日升双鱼、日升巨蟹' },
+                { id: 'star3', label: '星座3', default: '日升水瓶、日升处女' },
+            ]},
+            { section: '未来时间轴 (5年)', fields: [
+                { id: 'y1d', label: '年份1', default: '2025/12 —— 2026/12' }, { id: 'y1t', label: '1. 内容', type: 'textarea', default: '流年水星...' },
+                { id: 'y2d', label: '年份2', default: '2026/12 —— 2027/12' }, { id: 'y2t', label: '2. 内容', type: 'textarea', default: '流年火星...' },
+                { id: 'y3d', label: '年份3', default: '2027/12 —— 2028/12' }, { id: 'y3t', label: '3. 内容', type: 'textarea', default: '流年土星...' },
+                { id: 'y4d', label: '年份4', default: '2028/12 —— 2029/12' }, { id: 'y4t', label: '4. 内容', type: 'textarea', default: '流年水星...' },
+                { id: 'y5d', label: '年份5', default: '2029/12 —— 2030/12' }, { id: 'y5t', label: '5. 内容', type: 'textarea', default: '流年水星...' },
+            ]},
+            { section: '流月重点 (12月)', fields: [
+                { id: 'm1d', label: '流月1', default: '11/5 —— 12/2' }, { id: 'm1t', label: '1. 内容', type: 'textarea', default: '流月金月合...' },
+                { id: 'm2d', label: '流月2', default: '12/2 —— 2026/1/26' }, { id: 'm2t', label: '2. 内容', type: 'textarea', default: '流月金土刑...' },
+                { id: 'm3d', label: '流月3', default: '1/26 —— 2/22' }, { id: 'm3t', label: '3. 内容', type: 'textarea', default: '流月火天拱...' },
+                { id: 'm4d', label: '流月4', default: '2/22 —— 3/21' }, { id: 'm4t', label: '4. 内容', type: 'textarea', default: '流月金月刑...' },
+                { id: 'm5d', label: '流月5', default: '3/21 —— 4/29' }, { id: 'm5t', label: '5. 内容', type: 'textarea', default: '流月月火刑...' },
+                { id: 'm6d', label: '流月6', default: '4/29 —— 5/26' }, { id: 'm6t', label: '6. 内容', type: 'textarea', default: '流月月水拱...' },
+                { id: 'm7d', label: '流月7', default: '5/26 —— 6/23' }, { id: 'm7t', label: '7. 内容', type: 'textarea', default: '流月日土合...' },
+                { id: 'm8d', label: '流月8', default: '6/23 —— 7/20' }, { id: 'm8t', label: '8. 内容', type: 'textarea', default: '流月月水拱...' },
+                { id: 'm9d', label: '流月9', default: '7/20 —— 8/16' }, { id: 'm9t', label: '9. 内容', type: 'textarea', default: '流月金月刑...' },
+                { id: 'm10d', label: '流月10', default: '8/16 —— 9/12' }, { id: 'm10t', label: '10. 内容', type: 'textarea', default: '流月火土刑...' },
+                { id: 'm11d', label: '流月11', default: '9/12 —— 10/16' }, { id: 'm11t', label: '11. 内容', type: 'textarea', default: '流月日火合...' },
+                { id: 'm12d', label: '流月12', default: '10/16 —— 11/18' }, { id: 'm12t', label: '12. 内容', type: 'textarea', default: '流月月木刑...' },
+            ]}
+        ];
+
+        window.onload = function() {
+            const container = document.getElementById('form-container');
+            formConfig.forEach(s => {
+                let html = `<div class="form-section"><div class="form-header">${s.section}</div><div class="form-body">`;
+                s.fields.forEach(f => {
+                    html += `<div class="input-group"><label class="label">${f.label || f.id}</label>`;
+                    if(f.type === 'textarea') html += `<textarea id="in-${f.id}">${f.default}</textarea>`;
+                    else html += `<input type="text" id="in-${f.id}" value="${f.default}">`;
+                    html += `</div>`;
+                });
+                html += `</div></div>`;
+                container.insertAdjacentHTML('beforeend', html);
+            });
+            formConfig.forEach(s => s.fields.forEach(f => {
+                const el = document.getElementById('in-' + f.id);
+                const saved = localStorage.getItem(f.id);
+                if (saved) el.value = saved;
+                el.addEventListener('input', () => localStorage.setItem(f.id, el.value));
+            }));
+        };
+
+        // --- 弹窗功能 ---
+        function showModal(msg, isConfirm, callback) {
+            const modal = document.getElementById('custom-modal');
+            document.getElementById('modal-msg').innerText = msg;
+            const btnCancel = document.getElementById('modal-cancel');
+            const btnOk = document.getElementById('modal-ok');
+            
+            modal.style.display = 'flex';
+            
+            const newBtnOk = btnOk.cloneNode(true);
+            btnOk.parentNode.replaceChild(newBtnOk, btnOk);
+            
+            const newBtnCancel = btnCancel.cloneNode(true);
+            btnCancel.parentNode.replaceChild(newBtnCancel, btnCancel);
+
+            if(isConfirm) {
+                newBtnCancel.style.display = 'block';
+                newBtnCancel.onclick = function() { modal.style.display = 'none'; };
+                newBtnOk.onclick = function() { 
+                    modal.style.display = 'none'; 
+                    if(callback) callback(); 
+                };
+            } else {
+                newBtnCancel.style.display = 'none';
+                newBtnOk.onclick = function() { modal.style.display = 'none'; };
+            }
+        }
+
+        // --- 重置功能 ---
+        function resetData() {
+            showModal("确定要重置所有内容吗？\n这将清空当前输入并恢复默认值。", true, function() {
+                localStorage.clear();
+                formConfig.forEach(s => s.fields.forEach(f => {
+                    const el = document.getElementById('in-' + f.id);
+                    if (el) {
+                        el.value = f.default;
+                    }
+                }));
+            });
+        }
+        
+        function toggleImport() {
+            const panel = document.getElementById('import-panel');
+            panel.style.display = panel.style.display === 'none' || panel.style.display === '' ? 'block' : 'none';
+        }
+
+        // --- 核心：粘性解析逻辑 ---
+        function runImport() {
+            const text = document.getElementById('import-text').value;
+            if(!text) { showModal("请先粘贴内容", false); return; }
+            
+            const cleanText = text.replace(/：/g, ':').replace(/\r\n/g, '\n');
+            const lines = cleanText.split('\n');
+            
+            let currentSection = 'INTRO';
+            let activeFieldId = 'intro'; 
+            let phaseCount = 0;
+            let timeCount = 0;
+            let monthCount = 0;
+            let introFound = false;
+            let charmFound = false;
+            
+            // 追踪哪些字段已被本次导入触及，用于判断是“第一次覆盖”还是“追加”
+            const touchedFields = new Set();
+            
+            // 临时缓存星盘
+            let lastSeenStars = ""; 
+
+            // 自动相位触发词
+            const phaseKeywords = ['月火冲', '水天合', '水海合', '金天合', '天海合', '木星拱', '火星冲', '婚神星', '月天拱', '日火', '月海', '火天', '水星刑', '金星拱'];
+
+            const appendVal = (id, val) => {
+                const el = document.getElementById('in-' + id);
+                if(el && val) {
+                    let cleanVal = val.trim();
+                    if(!cleanVal) return;
+
+                    if(id === 'intro') {
+                        return; 
+                    } 
+                    else if(id === 'charm') {
+                        const defaultCharm = formConfig.find(s=>s.section.includes('宿命')).fields.find(f=>f.id=='charm').default;
+                        if(!el.value || el.value.indexOf('✨') === -1) {
+                            el.value = defaultCharm;
+                        }
+                        if(!el.value.includes(cleanVal)) { 
+                            el.value += '\n' + cleanVal; 
+                        }
+                        touchedFields.add(id);
+                    }
+                    else {
+                        // 强制清空逻辑
+                        if (!touchedFields.has(id)) {
+                            el.value = cleanVal;
+                            touchedFields.add(id);
+                        } else {
+                            if(el.tagName === 'TEXTAREA') { 
+                                if(!el.value.includes(cleanVal)) el.value += '\n' + cleanVal; 
+                            } else { 
+                                if(!el.value.includes(cleanVal)) el.value += ' ' + cleanVal; 
+                            }
+                        }
+                    }
+                    localStorage.setItem(id, el.value);
+                }
+            };
+
+            for(let i=0; i<lines.length; i++) {
+                let line = lines[i].trim();
+                if(!line) continue;
+
+                let sectionChanged = false;
+
+                // --- 1. 全局板块切换检测 ---
+                if (phaseKeywords.some(k => line.startsWith(k))) { currentSection = 'PHASE'; activeFieldId = null; sectionChanged = true; }
+                else if(line.includes('相位') && line.length < 15) { currentSection = 'PHASE'; activeFieldId = null; sectionChanged = true; }
+                
+                else if((line.includes('财富') || line.includes('事业')) && (line.includes('宫') || line.includes('天赋') || line.includes(':'))) { currentSection = 'WEALTH'; activeFieldId = null; sectionChanged = true; }
+                
+                else if(line.includes('情感模式') || line.includes('需求画像') || line.includes('定心丸')) { currentSection = 'LOVE'; activeFieldId = null; sectionChanged = true; }
+                
+                else if(line.includes('欲望探索') || line.includes('秘密花园')) { currentSection = 'DESIRE'; activeFieldId = null; sectionChanged = true; }
+
+                else if(line.includes('宿命') && line.includes('欲望')) { currentSection = 'DESIRE'; activeFieldId = null; sectionChanged = true; }
+                
+                // 修复：只要年份开头，强制切入TIME
+                else if(line.match(/^\s*\d{4}[\/\-\.年]\d{1,2}/)) { currentSection = 'TIME'; activeFieldId = null; sectionChanged = true; }
+                else if(line.includes('未来时间轴') || line.includes('生活重心')) { currentSection = 'TIME'; activeFieldId = null; sectionChanged = true; }
+                
+                // 修复：只要流月日期开头，强制切入MONTH
+                else if(line.match(/^(\d{4}\/)?\d{1,2}[\/\-]\d{1,2}.*?(\d{4}\/)?\d{1,2}[\/\-]\d{1,2}/)) { currentSection = 'MONTH'; activeFieldId = null; sectionChanged = true; }
+                else if(line.includes('流月重点') || line.includes('关注概况')) { currentSection = 'MONTH'; activeFieldId = null; sectionChanged = true; }
+
+                // --- 2. 板块内字段匹配 (带粘性) ---
+
+                // [INTRO]
+                if(currentSection === 'INTRO') {
+                    // do nothing
+                }
+
+                // [PHASE]
+                else if(currentSection === 'PHASE') {
+                    if(line.includes(':')) {
+                        const parts = line.split(':');
+                        if (parts[0].trim() !== '相位' && parts[0].length < 10) { 
+                            phaseCount++;
+                            if(phaseCount > 10) phaseCount = 10; 
+                            document.getElementById(`in-p${phaseCount}t`).value = parts[0];
+                            activeFieldId = `p${phaseCount}c`;
+                            appendVal(activeFieldId, parts.slice(1).join(':'));
+                        }
+                    } else {
+                        if(activeFieldId) appendVal(activeFieldId, line);
+                    }
+                }
+
+                // [WEALTH]
+                else if(currentSection === 'WEALTH') {
+                    if(line.startsWith('事业模式')) { 
+                        activeFieldId = 'w3'; 
+                        let content = line.replace('事业模式', '').trim();
+                        if(content) appendVal('w3', content);
+                    }
+                    else if(line.startsWith('正财') || line.includes('财富宫')) { 
+                        activeFieldId = 'w1'; 
+                        let content = line.replace('正财', '').trim(); 
+                        if(content) appendVal('w1', content); 
+                    }
+                    else if(line.startsWith('偏财') || line.includes('偏财宫')) { 
+                        activeFieldId = 'w2'; 
+                        let content = line.replace('偏财', '').trim();
+                        if(content) appendVal('w2', content);
+                    }
+                    else {
+                        if(activeFieldId) appendVal(activeFieldId, line);
+                    }
+                }
+
+                // [LOVE]
+                else if(currentSection === 'LOVE') {
+                    if(line.includes('定心丸') || line.includes('情感模式')) continue;
+
+                    if(line.includes('星座') || (line.includes('金星') && line.includes('月亮'))) { activeFieldId = 'signs'; appendVal('signs', line); }
+                    else if(line.startsWith('理想画像') || line.includes('渴望的恋人')) { 
+                         activeFieldId = 'ideal'; 
+                         if(line !== '理想画像') appendVal('ideal', line); 
+                    }
+                    else if(line.startsWith('恋爱偏好')) { 
+                         activeFieldId = 'pref'; 
+                         if(line !== '恋爱偏好') appendVal('pref', line);
+                    }
+                    else if(line.startsWith('逻辑沟通') || line.includes('逻辑型')) { 
+                        activeFieldId = 'logic'; 
+                        if(line !== '逻辑沟通') appendVal('logic', line);
+                    }
+                    
+                    else if(line.includes('情绪按钮') || line.includes('情绪开关') || (line.includes('情绪') && line.includes('按钮'))) { 
+                        activeFieldId = 'emotion'; 
+                        if(line !== '情绪按钮') appendVal('emotion', line); 
+                    }
+                    else if(line.startsWith('情绪')) { 
+                        activeFieldId = 'emotion'; appendVal('emotion', line); 
+                    }
+                    
+                    else if(line.includes('让步') && !activeFieldId) { 
+                        activeFieldId = 'emotion'; appendVal('emotion', line); 
+                    }
+
+                    else if(line.startsWith('恋爱里的前期') || line.startsWith('前期')) { activeFieldId = 's1'; if(!line.includes('表现')) appendVal('s1', line); }
+                    else if(line.startsWith('恋爱里的中期') || line.startsWith('中期')) { activeFieldId = 's2'; if(!line.includes('表现')) appendVal('s2', line); }
+                    else if(line.startsWith('恋爱里的后期') || line.startsWith('后期')) { activeFieldId = 's3'; if(!line.includes('表现')) appendVal('s3', line); }
+                    
+                    else if(line.startsWith('爱的时候')) { activeFieldId = 'loveT'; if(line !== '爱的时候') appendVal('loveT', line); }
+                    else if(line.startsWith('不爱的时候')) { activeFieldId = 'loveF'; if(line !== '不爱的时候') appendVal('loveF', line); }
+                    
+                    else if(line.startsWith('恋爱宫')) { activeFieldId = 'houseL'; if(line !== '恋爱宫') appendVal('houseL', line); }
+                    else if(line.startsWith('婚姻宫')) { activeFieldId = 'houseM'; if(line !== '婚姻宫') appendVal('houseM', line); }
+                    else {
+                        if(activeFieldId) appendVal(activeFieldId, line);
+                    }
+                }
+
+                // [DESIRE]
+                else if(currentSection === 'DESIRE') {
+                    if(line.includes('欲望探索') || line.includes('秘密花园') || line.includes('宿命与欲望')) continue;
+
+                    if(line.includes('致命') && line.includes('星座')) { activeFieldId = 'star3'; appendVal('star3', line.split(/[:：]/)[1] || line); }
+                    else if(line.includes('暧昧') && line.includes('星座')) { activeFieldId = 'star1'; appendVal('star1', line.split(/[:：]/)[1] || line); }
+                    else if((line.includes('肉体') || line.includes('欲罢不能')) && line.includes('星座')) { activeFieldId = 'star2'; appendVal('star2', line.split(/[:：]/)[1] || line); }
+                    
+                    else if(line.includes('生理需求') || line.includes('8宫')) { activeFieldId = 'desire'; appendVal('desire', line); }
+                    else if(line.includes('魅惑') || line.includes('建议') || line.includes('精油')) { activeFieldId = 'charm'; appendVal('charm', line); }
+                    
+                    else if(line.startsWith('触发机制')) { activeFieldId = 'trigger'; if(line !== '触发机制') appendVal('trigger', line); }
+                    else if(line.startsWith('宿命描述') || line.startsWith('宿命姻缘') || line.startsWith('红线')) {
+                        activeFieldId = 'trigger'; 
+                        let content = line.replace(/^(宿命描述|宿命姻缘|红线描述|前世今生的红线)[:：]?\s*/, '');
+                        if(content) appendVal('trigger', content);
+                    }
+                    
+                    else if(line.startsWith('欲望描述')) { activeFieldId = 'desire'; if(line !== '欲望描述') appendVal('desire', line); }
+                    else {
+                        if(activeFieldId) appendVal(activeFieldId, line);
+                    }
+                }
+
+                // [TIME]
+                else if(currentSection === 'TIME') {
+                    const dateMatch = line.match(/^\s*\d{4}[\/\-\.年]\d{1,2}.*?\d{4}/);
+                    if(dateMatch) {
+                        timeCount++;
+                        if(timeCount > 5) timeCount = 5;
+                        document.getElementById(`in-y${timeCount}d`).value = line; 
+                        activeFieldId = `y${timeCount}t`; 
+                        if(!touchedFields.has(activeFieldId)) {
+                             document.getElementById(`in-y${timeCount}t`).value = "";
+                             touchedFields.add(activeFieldId);
+                        }
+                    } else {
+                        if(timeCount > 0) appendVal(`y${timeCount}t`, line);
+                    }
+                }
+
+                // [MONTH]
+                else if(currentSection === 'MONTH') {
+                    const monthMatch = line.match(/^(\d{4}\/)?\d{1,2}[\/\-]\d{1,2}.*?(\d{4}\/)?\d{1,2}[\/\-]\d{1,2}/);
+                    if(monthMatch) {
+                        monthCount++;
+                        if(monthCount > 12) monthCount = 12;
+                        document.getElementById(`in-m${monthCount}d`).value = line; 
+                        activeFieldId = `m${monthCount}t`; 
+                        if(!touchedFields.has(activeFieldId)) {
+                             document.getElementById(`in-m${monthCount}t`).value = "";
+                             touchedFields.add(activeFieldId);
+                        }
+                    } else {
+                        if(monthCount > 0) appendVal(`m${monthCount}t`, line);
+                    }
+                }
+            }
+
+            showModal("识别填充完毕！\n请检查各板块内容。", false);
+            toggleImport();
+        }
+
+        function fillData() {
+            const val = (id) => {
+                const el = document.getElementById('in-'+id);
+                return el ? el.value.trim().replace(/\n/g, '<br>') : '';
+            };
+            const rawVal = (id) => {
+                const el = document.getElementById('in-'+id);
+                return el ? el.value.trim() : '';
+            };
+            const set = (id, v) => { 
+                const el = document.getElementById('out-'+id);
+                if(el) el.innerHTML = v; 
+            }
+
+            set('intro', val('intro'));
+            
+            // 相位
+            let phtml = '';
+            for(let i=1; i<=10; i++) {
+                let t = val('p'+i+'t'), c = val('p'+i+'c');
+                let rawT = rawVal('p'+i+'t'), rawC = rawVal('p'+i+'c');
+                if(rawT || rawC) { 
+                    phtml += `<div class="card"><h3>${t}</h3><p>${c}</p></div>`;
+                }
+            }
+            document.getElementById('out-phases').innerHTML = phtml;
+
+            set('wealth1', val('w1')); set('wealth2', val('w2')); set('wealth3', val('w3'));
+            
+            const signs = val('signs').split(/[\s·,，]+/);
+            let sHtml = '';
+            signs.forEach((s, i) => { if(s) sHtml += `<span class="badge" style="background:${['#8a1c1c','#c5a059','#333'][i%3]}">${s}</span>`; });
+            document.getElementById('out-signs').innerHTML = sHtml;
+
+            set('love-ideal', val('ideal')); set('love-pref', val('pref')); 
+            set('comm-logic', val('logic')); set('comm-emotion', val('emotion'));
+            set('stage-early', val('s1')); set('stage-mid', val('s2')); set('stage-late', val('s3'));
+            set('love-true', val('loveT')); set('love-false', val('loveF'));
+            set('house-love', val('houseL')); set('house-marriage', val('houseM'));
+            
+            // 宿命显示逻辑：紫色框大字用 trigger 的内容
+            set('destiny-main', ''); 
+            set('destiny-trigger', val('trigger')); 
+            
+            set('desire', val('desire')); set('charm', val('charm'));
+            set('star1', val('star1')); set('star2', val('star2')); set('star3', val('star3'));
+
+            // 时间轴
+            let thtml = '';
+            let hasTimelineData = false;
+            for(let i=1; i<=5; i++) {
+                let d = rawVal('y'+i+'d'), t = rawVal('y'+i+'t');
+                if(d || t) {
+                    thtml += `<div class="timeline-item"><div class="timeline-dot"></div><span class="time-date">${val('y'+i+'d')}</span><p>${val('y'+i+'t')}</p></div>`;
+                    hasTimelineData = true;
+                }
+            }
+            document.getElementById('out-timeline').innerHTML = thtml;
+            document.getElementById('sec-timeline').style.display = hasTimelineData ? 'block' : 'none';
+            document.getElementById('div-timeline').style.display = hasTimelineData ? 'block' : 'none';
+
+            // 流月
+            let mhtml = '';
+            let hasMonthData = false;
+            for(let i=1; i<=12; i++) {
+                let d = rawVal('m'+i+'d'), t = rawVal('m'+i+'t');
+                if(d || t) {
+                    mhtml += `<div class="month-item"><span class="month-date">${val('m'+i+'d')}</span><p>${val('m'+i+'t')}</p></div>`;
+                    hasMonthData = true;
+                }
+            }
+            document.getElementById('out-monthly').innerHTML = mhtml;
+            document.getElementById('sec-monthly').style.display = hasMonthData ? 'block' : 'none';
+            document.getElementById('div-monthly').style.display = hasMonthData ? 'block' : 'none';
+        }
+
+        function showPreview() {
+            fillData();
+            document.getElementById('editor-ui').style.display = 'none';
+            document.getElementById('editor-buttons').style.display = 'none';
+            document.getElementById('preview-ui').style.display = 'block';
+            window.scrollTo(0,0);
+            
+            if(window.innerWidth < 750) {
+                const scale = window.innerWidth / 750;
+                document.getElementById('report-card').style.transform = `scale(${scale})`;
+                document.getElementById('report-card').style.marginBottom = `-${(1-scale)*100}%`;
+            }
+        }
+
+        function hidePreview() {
+            document.getElementById('preview-ui').style.display = 'none';
+            document.getElementById('editor-ui').style.display = 'block';
+            document.getElementById('editor-buttons').style.display = 'flex';
+            document.getElementById('report-card').style.transform = 'none';
+            document.getElementById('report-card').style.marginBottom = '0';
+        }
+
+        function downloadImage() {
+            const mask = document.getElementById('loading-mask');
+            const element = document.getElementById('report-card');
+            mask.style.display = 'flex';
+            window.scrollTo(0,0);
+            const oldTransform = element.style.transform;
+            const oldMargin = element.style.marginBottom;
+            element.style.transform = 'none';
+            element.style.marginBottom = '0';
+
+            html2canvas(element, {
+                scale: 2, 
+                useCORS: true, 
+                allowTaint: true, 
+                scrollY: 0,
+                width: 750,
+                windowWidth: 750
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `TA心通_长图_${new Date().getTime()}.jpg`;
+                link.href = canvas.toDataURL('image/jpeg', 0.9);
+                link.click();
+                mask.style.display = 'none';
+                element.style.transform = oldTransform;
+                element.style.marginBottom = oldMargin;
+            }).catch(err => {
+                showModal("生成失败: " + err, false);
+                mask.style.display = 'none';
+                element.style.transform = oldTransform;
+                element.style.marginBottom = oldMargin;
+            });
+        }
+    </script>
+</body>
+</html>
